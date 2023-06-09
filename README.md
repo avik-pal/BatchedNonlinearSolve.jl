@@ -7,7 +7,9 @@ Batched Nonlinear Solvers for Machine Learning Applications
 
 ## Available Algorithms
 
-* `BatchedNewtonRaphson`: Newton-Raphson method
+* `BatchedNewtonRaphson`: Newton-Raphson method.
+* `BatchedDFSane`: Derivative-Free Sane method. Good choice for large-scale problems.
+* `BatchedBroyden`: Broyden method.
 
 ## Quickstart
 

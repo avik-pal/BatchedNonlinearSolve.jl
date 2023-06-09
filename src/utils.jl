@@ -20,3 +20,22 @@ function _construct_batched_problem_structure(u0::AbstractVector, f, p)
     f_modified(u) = reshape(f(reconstruct(u), p), :, 1)
     return reshape(u0, :, 1), f_modified, reconstruct
 end
+
+@views function _init_𝓙(x::AbstractMatrix)
+    𝓙 = zeromatrix(x[:, 1])
+    if ismutable(x)
+        𝓙[diagind(𝓙)] .= one(eltype(x))
+    else
+        𝓙 .+= I
+    end
+    return repeat(𝓙, 1, 1, size(x, 2))
+end
+
+_retcode_from_storage(::Nothing) = ReturnCode.Success
+function _retcode_from_storage(storage::NLSolveSafeTerminationResultWithState)
+    if storage.return_code[] == DiffEqBase.NLSolveSafeTerminationReturnCode.Success
+        return ReturnCode.Success
+    else
+        return ReturnCode.Terminated
+    end
+end

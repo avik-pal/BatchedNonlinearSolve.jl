@@ -1,23 +1,10 @@
-struct BatchedNewtonRaphson{AD, LS, TC <: NLSolveTerminationCondition} <:
-       AbstractBatchedNonlinearSolveAlgorithm
-    autodiff::AD
-    linsolve::LS
-    termination_condition::TC
-end
-
-function BatchedNewtonRaphson(;
-    autodiff=AD.ForwardDiffBackend(),
-    linsolve=nothing,
-    termination_condition=NLSolveTerminationCondition(NLSolveTerminationMode.RelSafeBest;
+@kwdef struct BatchedNewtonRaphson{AD, LS, TC <: NLSolveTerminationCondition} <:
+              AbstractBatchedNonlinearSolveAlgorithm
+    autodiff::AD = AD.ForwardDiffBackend()
+    linsolve::LS = nothing
+    termination_condition::TC = NLSolveTerminationCondition(NLSolveTerminationMode.RelSafeBest;
         abstol=nothing,
-        reltol=nothing))
-    return BatchedNewtonRaphson{
-        typeof(autodiff),
-        typeof(linsolve),
-        typeof(termination_condition),
-    }(autodiff,
-        linsolve,
-        termination_condition)
+        reltol=nothing)
 end
 
 function SciMLBase.__solve(prob::NonlinearProblem,
@@ -56,11 +43,8 @@ function SciMLBase.__solve(prob::NonlinearProblem,
         xₙ .-= δx
 
         if termination_condition(fₙ, xₙ, xₙ₋₁, atol, rtol)
-            return build_solution(prob,
-                alg,
-                reconstruct(xₙ),
-                reconstruct(fₙ);
-                retcode=ReturnCode.Success)
+            retcode = _retcode_from_storage(storage)
+            return build_solution(prob, alg, reconstruct(xₙ), reconstruct(fₙ); retcode)
         end
 
         xₙ₋₁ .= xₙ

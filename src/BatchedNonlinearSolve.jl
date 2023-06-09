@@ -5,10 +5,12 @@ using AbstractDifferentiation,
     DiffEqBase,
     FiniteDiff,
     ForwardDiff,
+    LinearAlgebra,
     LinearSolve,
     NNlib,
     SciMLBase,
     Zygote
+import ArrayInterface: zeromatrix, ismutable
 import CommonSolve: init, solve, solve!
 import SciMLBase: build_solution
 
@@ -25,6 +27,6 @@ include("raphson.jl")
 include("dfsane.jl")
 include("broyden.jl")
 
-export BatchedNewtonRaphson
+export BatchedBroyden, BatchedDFSane, BatchedNewtonRaphson
 
 end
