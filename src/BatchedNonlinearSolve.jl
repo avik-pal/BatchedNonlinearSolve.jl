@@ -21,7 +21,7 @@ const ∅p = SciMLBase.NullParameters()
 abstract type AbstractBatchedNonlinearSolveAlgorithm <: SciMLBase.AbstractNonlinearAlgorithm end
 
 include("utils.jl")
-include("ralphson.jl")
+include("raphson.jl")
 include("dfsane.jl")
 include("broyden.jl")
 

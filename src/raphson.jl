@@ -1,17 +1,17 @@
-struct BatchedNewtonRalphson{AD, LS, TC <: NLSolveTerminationCondition} <:
+struct BatchedNewtonRaphson{AD, LS, TC <: NLSolveTerminationCondition} <:
        AbstractBatchedNonlinearSolveAlgorithm
     autodiff::AD
     linsolve::LS
     termination_condition::TC
 end
 
-function BatchedNewtonRalphson(;
+function BatchedNewtonRaphson(;
     autodiff=AD.ForwardDiffBackend(),
     linsolve=nothing,
     termination_condition=NLSolveTerminationCondition(NLSolveTerminationMode.RelSafeBest;
         abstol=nothing,
         reltol=nothing))
-    return BatchedNewtonRalphson{
+    return BatchedNewtonRaphson{
         typeof(autodiff),
         typeof(linsolve),
         typeof(termination_condition),
@@ -21,7 +21,7 @@ function BatchedNewtonRalphson(;
 end
 
 function SciMLBase.__solve(prob::NonlinearProblem,
-    alg::BatchedNewtonRalphson;
+    alg::BatchedNewtonRaphson;
     abstol=nothing,
     reltol=nothing,
     maxiters=100,
@@ -66,9 +66,14 @@ function SciMLBase.__solve(prob::NonlinearProblem,
         xₙ₋₁ .= xₙ
     end
 
+    if storage isa NLSolveSafeTerminationResultWithState
+        xₙ = storage.u
+        fₙ = f(xₙ)
+    end
+
     return build_solution(prob,
         alg,
         reconstruct(xₙ),
         reconstruct(fₙ);
-        retcode=ReturnCode.Maxiters)
+        retcode=ReturnCode.MaxIters)
 end
