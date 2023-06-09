@@ -25,6 +25,6 @@ include("raphson.jl")
 include("dfsane.jl")
 include("broyden.jl")
 
-export BatchedNewtonRalphson
+export BatchedNewtonRaphson
 
 end
