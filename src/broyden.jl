@@ -50,7 +50,7 @@ end
         batched_mul!(𝓙⁻¹, reshape(δx, L, 1, N), xᵀ𝓙⁻¹, one(T), one(T))
 
         if termination_condition(fₙ, xₙ, xₙ₋₁, atol, rtol)
-            retcode = _retcode_from_storage(storage)
+            retcode, xₙ, fₙ = _result_from_storage(storage, xₙ, fₙ, f, mode)
             return build_solution(prob, alg, reconstruct(xₙ), reconstruct(fₙ); retcode)
         end
 
@@ -58,7 +58,7 @@ end
         fₙ₋₁ .= fₙ
     end
 
-    if storage isa NLSolveSafeTerminationResultWithState
+    if mode ∈ DiffEqBase.SAFE_BEST_TERMINATION_MODES
         xₙ = storage.u
         fₙ = f(xₙ)
     end

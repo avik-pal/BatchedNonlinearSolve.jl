@@ -7,9 +7,9 @@
     γ::T = 1.0f-4
     τₘᵢₙ::T = 0.1f0
     τₘₐₓ::T = 0.5f0
-    nexp::Int = 2
-    ηₛ::F = (f₁, k, x, F) -> f₁ ./ k .^ 2
-    termination_condition::TC = NLSolveTerminationCondition(NLSolveTerminationMode.RelSafeBest;
+    nₑₓₚ::Int = 2
+    ηₛ::F = (f₍ₙₒᵣₘ₎₁, n, xₙ, fₙ) -> f₍ₙₒᵣₘ₎₁ ./ n .^ 2
+    termination_condition::TC = NLSolveTerminationCondition(NLSolveTerminationMode.NLSolveDefault;
         abstol=nothing,
         reltol=nothing)
     max_inner_iterations::Int = 1000
@@ -22,157 +22,108 @@ function SciMLBase.__solve(prob::NonlinearProblem,
     reltol=nothing,
     maxiters=100,
     kwargs...)
-    # tc = alg.termination_condition
-    # mode = DiffEqBase.get_termination_mode(tc)
+    @assert !isinplace(prob) "In-place algorithms are not yet supported!"
 
-    # f = Base.Fix2(prob.f, prob.p)
-    # x = float(prob.u0)
+    u, f, reconstruct = _construct_batched_problem_structure(prob)
+    L, N = size(u)
+    T = eltype(u)
 
-    # if batched
-    #     batch_size = size(x, 2)
-    # end
+    tc = alg.termination_condition
+    mode = DiffEqBase.get_termination_mode(tc)
 
-    # T = eltype(x)
-    # σ_min = float(alg.σ_min)
-    # σ_max = float(alg.σ_max)
-    # σ_k = batched ? fill(float(alg.σ_1), 1, batch_size) : float(alg.σ_1)
+    storage = mode ∈ DiffEqBase.SAFE_TERMINATION_MODES ?
+              NLSolveSafeTerminationResultWithState(; u) : nothing
 
-    # M = alg.M
-    # γ = float(alg.γ)
-    # τ_min = float(alg.τ_min)
-    # τ_max = float(alg.τ_max)
-    # nexp = alg.nexp
-    # η_strategy = alg.η_strategy
+    atol = _get_tolerance(abstol, tc.abstol, T)
+    rtol = _get_tolerance(reltol, tc.reltol, T)
+    termination_condition = tc(storage)
 
-    # batched && @assert ndims(x)==2 "Batched SimpleDFSane only supports 2D arrays"
+    σₘᵢₙ, σₘₐₓ, γ, τₘᵢₙ, τₘₐₓ = T(alg.σₘᵢₙ), T(alg.σₘₐₓ), T(alg.γ), T(alg.τₘᵢₙ), T(alg.τₘₐₓ)
+    α₁ = one(T)
+    α₊, α₋ = similar(u, 1, N), similar(u, 1, N)
+    σₙ = fill(T(alg.σ₁), 1, N)
+    𝒹 = similar(σₙ, L, N)
+    (; M, nₑₓₚ) = alg
 
-    # if SciMLBase.isinplace(prob)
-    #     error("SimpleDFSane currently only supports out-of-place nonlinear problems")
-    # end
+    xₙ, xₙ₋₁, f₍ₙₒᵣₘ₎ₙ₋₁, f₍ₙₒᵣₘ₎ₙ = copy(u), copy(u), similar(u, 1, N), similar(u, 1, N)
 
-    # atol = abstol !== nothing ? abstol :
-    #        (tc.abstol !== nothing ? tc.abstol :
-    #         real(oneunit(eltype(T))) * (eps(real(one(eltype(T)))))^(4 // 5))
-    # rtol = reltol !== nothing ? reltol :
-    #        (tc.reltol !== nothing ? tc.reltol : eps(real(one(eltype(T))))^(4 // 5))
+    function ff!(fₙₒᵣₘ, x)
+        fₓ = f(x)
+        sum!(abs2, fₙₒᵣₘ, fₓ)
+        fₙₒᵣₘ .^= (nₑₓₚ / 2)
+        return fₓ, fₙₒᵣₘ
+    end
 
-    # if mode ∈ DiffEqBase.SAFE_BEST_TERMINATION_MODES
-    #     error("SimpleDFSane currently doesn't support SAFE_BEST termination modes")
-    # end
+    fₙ₋₁, f₍ₙₒᵣₘ₎ₙ₋₁ = ff!(f₍ₙₒᵣₘ₎ₙ₋₁, xₙ)
+    ℋ = repeat(f₍ₙₒᵣₘ₎ₙ₋₁, M, 1)
+    f̄ = similar(ℋ, 1, N)
+    ηₛ = (n, xₙ, fₙ) -> alg.ηₛ(f₍ₙₒᵣₘ₎ₙ₋₁, n, xₙ, fₙ)
 
-    # storage = mode ∈ DiffEqBase.SAFE_TERMINATION_MODES ? NLSolveSafeTerminationResult() :
-    #           nothing
-    # termination_condition = tc(storage)
+    for n in 1:maxiters
+        # Spectral parameter range check
+        @. σₙ = sign(σₙ) * clamp(abs(σₙ), σₘᵢₙ, σₘₐₓ)
 
-    # function ff(x)
-    #     F = f(x)
-    #     f_k = if batched
-    #         sum(abs2, F; dims=1) .^ (nexp / 2)
-    #     else
-    #         norm(F)^nexp
-    #     end
-    #     return f_k, F
-    # end
+        # Line search direction
+        @. 𝒹 = -σₙ * fₙ₋₁
 
-    # function generate_history(f_k, M)
-    #     if batched
-    #         history = similar(f_k, (M, length(f_k)))
-    #         history .= reshape(f_k, 1, :)
-    #         return history
-    #     else
-    #         return fill(f_k, M)
-    #     end
-    # end
+        η = ηₛ(n, xₙ₋₁, fₙ₋₁)
+        maximum!(f̄, ℋ)
+        fill!(α₊, α₁)
+        fill!(α₋, α₁)
+        @. xₙ = xₙ₋₁ + α₊ * 𝒹
 
-    # f_k, F_k = ff(x)
-    # α_1 = convert(T, 1.0)
-    # f_1 = f_k
-    # history_f_k = generate_history(f_k, M)
+        fₙ, f₍ₙₒᵣₘ₎ₙ = ff!(f₍ₙₒᵣₘ₎ₙ, xₙ)
 
-    # for k in 1:maxiters
-    #     # Spectral parameter range check
-    #     if batched
-    #         @. σ_k = sign(σ_k) * clamp(abs(σ_k), σ_min, σ_max)
-    #     else
-    #         σ_k = sign(σ_k) * clamp(abs(σ_k), σ_min, σ_max)
-    #     end
+        for _ in 1:(alg.max_inner_iterations)
+            𝒸 = norm(@. f̄ + η - γ * α₊^2 * f₍ₙₒᵣₘ₎ₙ₋₁)
 
-    #     # Line search direction
-    #     d = -σ_k .* F_k
+            norm(f₍ₙₒᵣₘ₎ₙ) ≤ 𝒸 && break
 
-    #     η = η_strategy(f_1, k, x, F_k)
-    #     f̄ = batched ? maximum(history_f_k; dims=1) : maximum(history_f_k)
-    #     α_p = α_1
-    #     α_m = α_1
-    #     x_new = @. x + α_p * d
+            @. α₊ = clamp(α₊^2 * f₍ₙₒᵣₘ₎ₙ₋₁ / (f₍ₙₒᵣₘ₎ₙ + (T(2) * α₊ - T(1)) * f₍ₙₒᵣₘ₎ₙ₋₁),
+                τₘᵢₙ * α₊,
+                τₘₐₓ * α₊)
+            @. xₙ = xₙ₋₁ - α₋ * 𝒹
+            fₙ, f₍ₙₒᵣₘ₎ₙ = ff!(f₍ₙₒᵣₘ₎ₙ, xₙ)
 
-    #     f_new, F_new = ff(x_new)
+            norm(f₍ₙₒᵣₘ₎ₙ) ≤ 𝒸 && break
 
-    #     inner_iterations = 0
-    #     while true
-    #         inner_iterations += 1
+            @. α₋ = clamp(α₋^2 * f₍ₙₒᵣₘ₎ₙ₋₁ / (f₍ₙₒᵣₘ₎ₙ + (T(2) * α₋ - T(1)) * f₍ₙₒᵣₘ₎ₙ₋₁),
+                τₘᵢₙ * α₋,
+                τₘₐₓ * α₋)
+            @. xₙ = xₙ₋₁ + α₊ * 𝒹
+            fₙ, f₍ₙₒᵣₘ₎ₙ = ff!(f₍ₙₒᵣₘ₎ₙ, xₙ)
+        end
 
-    #         if batched
-    #             # NOTE: This is simply a heuristic, ideally we check using `all` but that is
-    #             #       typically very expensive for large problems
-    #             norm(f_new) ≤ norm(@. f̄ + η - γ * α_p^2 * f_k) && break
-    #         else
-    #             f_new ≤ f̄ + η - γ * α_p^2 * f_k && break
-    #         end
+        if termination_condition(fₙ, xₙ, xₙ₋₁, atol, rtol)
+            retcode, xₙ, fₙ = _result_from_storage(storage, xₙ, fₙ, f, mode)
+            return build_solution(prob, alg, reconstruct(xₙ), reconstruct(fₙ); retcode)
+        end
 
-    #         α_tp = @. α_p^2 * f_k / (f_new + (2 * α_p - 1) * f_k)
-    #         x_new = @. x - α_m * d
-    #         f_new, F_new = ff(x_new)
+        # Update spectral parameter
+        @. xₙ₋₁ = xₙ - xₙ₋₁
+        @. fₙ₋₁ = fₙ - fₙ₋₁
 
-    #         if batched
-    #             # NOTE: This is simply a heuristic, ideally we check using `all` but that is
-    #             #       typically very expensive for large problems
-    #             norm(f_new) ≤ norm(@. f̄ + η - γ * α_p^2 * f_k) && break
-    #         else
-    #             f_new ≤ f̄ + η - γ * α_p^2 * f_k && break
-    #         end
+        sum!(abs2, α₊, xₙ₋₁)
+        sum!(α₋, xₙ₋₁ .* fₙ₋₁)
+        σₙ .= α₊ ./ (α₋ .+ T(1e-5))
 
-    #         α_tm = @. α_m^2 * f_k / (f_new + (2 * α_m - 1) * f_k)
-    #         α_p = @. clamp(α_tp, τ_min * α_p, τ_max * α_p)
-    #         α_m = @. clamp(α_tm, τ_min * α_m, τ_max * α_m)
-    #         x_new = @. x + α_p * d
-    #         f_new, F_new = ff(x_new)
+        # Take step
+        @. xₙ₋₁ = xₙ
+        @. fₙ₋₁ = fₙ
+        @. f₍ₙₒᵣₘ₎ₙ₋₁ = f₍ₙₒᵣₘ₎ₙ
 
-    #         # NOTE: The original algorithm runs till either condition is satisfied, however,
-    #         #       for most batched problems like neural networks we only care about
-    #         #       approximate convergence
-    #         batched && (inner_iterations ≥ alg.max_inner_iterations) && break
-    #     end
+        # Update history
+        ℋ[n % M + 1, :] .= view(f₍ₙₒᵣₘ₎ₙ, 1, :)
+    end
 
-    #     if termination_condition(F_new, x_new, x, atol, rtol)
-    #         return SciMLBase.build_solution(prob,
-    #             alg,
-    #             x_new,
-    #             F_new;
-    #             retcode=ReturnCode.Success)
-    #     end
+    if mode ∈ DiffEqBase.SAFE_BEST_TERMINATION_MODES
+        xₙ = storage.u
+        fₙ = f(xₙ)
+    end
 
-    #     # Update spectral parameter
-    #     s_k = @. x_new - x
-    #     y_k = @. F_new - F_k
-
-    #     if batched
-    #         σ_k = sum(abs2, s_k; dims=1) ./ (sum(s_k .* y_k; dims=1) .+ T(1e-5))
-    #     else
-    #         σ_k = (s_k' * s_k) / (s_k' * y_k)
-    #     end
-
-    #     # Take step
-    #     x = x_new
-    #     F_k = F_new
-    #     f_k = f_new
-
-    #     # Store function value
-    #     if batched
-    #         history_f_k[k % M + 1, :] .= vec(f_new)
-    #     else
-    #         history_f_k[k % M + 1] = f_new
-    #     end
-    # end
-    # return SciMLBase.build_solution(prob, alg, x, F_k; retcode=ReturnCode.MaxIters)
+    return build_solution(prob,
+        alg,
+        reconstruct(xₙ),
+        reconstruct(fₙ);
+        retcode=ReturnCode.MaxIters)
 end

@@ -31,11 +31,19 @@ end
     return repeat(𝓙, 1, 1, size(x, 2))
 end
 
-_retcode_from_storage(::Nothing) = ReturnCode.Success
-function _retcode_from_storage(storage::NLSolveSafeTerminationResultWithState)
+_result_from_storage(::Nothing, xₙ, fₙ, f, mode) = ReturnCode.Success, xₙ, fₙ
+function _result_from_storage(storage::NLSolveSafeTerminationResultWithState,
+    xₙ,
+    fₙ,
+    f,
+    mode)
     if storage.return_code[] == DiffEqBase.NLSolveSafeTerminationReturnCode.Success
-        return ReturnCode.Success
+        return ReturnCode.Success, xₙ, fₙ
     else
-        return ReturnCode.Terminated
+        if mode ∈ DiffEqBase.SAFE_BEST_TERMINATION_MODES
+            return ReturnCode.Terminated, storage.u, f(storage.u)
+        else
+            return ReturnCode.Terminated, xₙ, fₙ
+        end
     end
 end
