@@ -19,8 +19,7 @@ end
     tc = alg.termination_condition
     mode = DiffEqBase.get_termination_mode(tc)
 
-    storage = mode ∈ DiffEqBase.SAFE_TERMINATION_MODES ?
-              NLSolveSafeTerminationResultWithState(; u) : nothing
+    storage = _get_storage(mode, u)
 
     xₙ, xₙ₋₁, δx, δf = ntuple(_ -> copy(u), 4)
     T = eltype(u)

@@ -32,12 +32,8 @@ end
 end
 
 _result_from_storage(::Nothing, xₙ, fₙ, f, mode) = ReturnCode.Success, xₙ, fₙ
-function _result_from_storage(storage::NLSolveSafeTerminationResultWithState,
-    xₙ,
-    fₙ,
-    f,
-    mode)
-    if storage.return_code[] == DiffEqBase.NLSolveSafeTerminationReturnCode.Success
+function _result_from_storage(storage::NLSolveSafeTerminationResult, xₙ, fₙ, f, mode)
+    if storage.return_code == DiffEqBase.NLSolveSafeTerminationReturnCode.Success
         return ReturnCode.Success, xₙ, fₙ
     else
         if mode ∈ DiffEqBase.SAFE_BEST_TERMINATION_MODES
@@ -46,4 +42,10 @@ function _result_from_storage(storage::NLSolveSafeTerminationResultWithState,
             return ReturnCode.Terminated, xₙ, fₙ
         end
     end
+end
+
+function _get_storage(mode, u)
+    return mode ∈ DiffEqBase.SAFE_TERMINATION_MODES ?
+           NLSolveSafeTerminationResult(mode ∈ DiffEqBase.SAFE_BEST_TERMINATION_MODES ? u :
+                                        nothing) : nothing
 end

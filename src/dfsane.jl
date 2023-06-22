@@ -31,8 +31,7 @@ function SciMLBase.__solve(prob::NonlinearProblem,
     tc = alg.termination_condition
     mode = DiffEqBase.get_termination_mode(tc)
 
-    storage = mode ∈ DiffEqBase.SAFE_TERMINATION_MODES ?
-              NLSolveSafeTerminationResultWithState(; u) : nothing
+    storage = _get_storage(mode, u)
 
     atol = _get_tolerance(abstol, tc.abstol, T)
     rtol = _get_tolerance(reltol, tc.reltol, T)
@@ -75,9 +74,9 @@ function SciMLBase.__solve(prob::NonlinearProblem,
         fₙ, f₍ₙₒᵣₘ₎ₙ = ff!(f₍ₙₒᵣₘ₎ₙ, xₙ)
 
         for _ in 1:(alg.max_inner_iterations)
-            𝒸 = norm(@. f̄ + η - γ * α₊^2 * f₍ₙₒᵣₘ₎ₙ₋₁)
+            𝒸 = @. f̄ + η - γ * α₊^2 * f₍ₙₒᵣₘ₎ₙ₋₁
 
-            norm(f₍ₙₒᵣₘ₎ₙ) ≤ 𝒸 && break
+            (sum(f₍ₙₒᵣₘ₎ₙ .≤ 𝒸) ≥ N ÷ 2) && break
 
             @. α₊ = clamp(α₊^2 * f₍ₙₒᵣₘ₎ₙ₋₁ / (f₍ₙₒᵣₘ₎ₙ + (T(2) * α₊ - T(1)) * f₍ₙₒᵣₘ₎ₙ₋₁),
                 τₘᵢₙ * α₊,
@@ -85,7 +84,7 @@ function SciMLBase.__solve(prob::NonlinearProblem,
             @. xₙ = xₙ₋₁ - α₋ * 𝒹
             fₙ, f₍ₙₒᵣₘ₎ₙ = ff!(f₍ₙₒᵣₘ₎ₙ, xₙ)
 
-            norm(f₍ₙₒᵣₘ₎ₙ) ≤ 𝒸 && break
+            (sum(f₍ₙₒᵣₘ₎ₙ .≤ 𝒸) ≥ N ÷ 2) && break
 
             @. α₋ = clamp(α₋^2 * f₍ₙₒᵣₘ₎ₙ₋₁ / (f₍ₙₒᵣₘ₎ₙ + (T(2) * α₋ - T(1)) * f₍ₙₒᵣₘ₎ₙ₋₁),
                 τₘᵢₙ * α₋,
